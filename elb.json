@@ -1,0 +1,155 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Create an ELB. Add DNS record for the same.",
+
+  "Parameters" : {
+    "ELBLoadBalancerName" : {
+      "Description" : "Name for the loadbalancer. LoadBalancer name cannot contain characters that are not letters, or digits or the dash.",
+      "Type" : "String",
+      "Default" : "NotificationService"
+    },
+    "ELBSecurityGroups" : {
+      "Description" : "Existing Security group for the load balancer. Value of property SecurityGroupIds must be of type List of String.",
+      "Type" : "AWS::EC2::SecurityGroup::Id",
+      "Default" : "sg-******"
+    },
+    "ELBSubnets" : {
+      "Description" : "Subnet list for the load balancer. Should be public for internet-facing, and private for internal subnet. Value of property Subnets must be of type List of String",
+      "Type" : "List<AWS::EC2::Subnet::Id>",
+      "Default" : "subnet-******,subnet-******"
+    },
+    "ELBScheme" : {
+      "Description" : "LoadBalancer scheme. Internal or internet-facing.",
+      "Type" : "String",
+      "Default" : "internet-facing",
+      "AllowedValues" : [ "internet-facing", "internal" ]
+    },
+    "ELBListenersLoadBalancerPort" : {
+      "Description" : "LoadBalancer external port.",
+      "Default" : "80",
+      "Type" : "Number"
+    },
+    "ELBListenersInstancePort" : {
+      "Description" : "The TCP port on which the instance server is listening.",
+      "Default" : "80",
+      "Type" : "Number"
+    },
+    "ELBListenersProtocol" : {
+      "Description" : "Specifies the protocol to use for routing traffic to back-end instances—HTTP, HTTPS, TCP, or SSL.",
+      "Type" : "String",
+      "Default" : "HTTP",
+      "AllowedValues" : [ "HTTP", "HTTPS", "TCP", "SSL" ],
+      "ConstraintDescription" : "Must be HTTP, HTTPS, TCP, or SSL. "
+    },
+    "ELBHealthCheckTarget" : {
+      "Description" : "Specifies the instance's protocol and port to check. The protocol can be TCP, HTTP, HTTPS, or SSL. The range of valid ports is 1 through 65535. For TCP and SSL, you specify a port pair. For example, you can specify TCP:5000 or SSL:5000. For HTTP or HTTPS, you specify a port and a path to ping (HTTP or HTTPS:port/PathToPing). For example, you can specify HTTP:80/health .",
+      "Default" : "TCP:80",
+      "Type" : "String"
+    },
+    "ELBHealthCheckHealthyThreshold" : {
+      "Description" : "The number of consecutive health probe successes required before moving the instance to the Healthy state.",
+      "Default" : "5",
+      "Type" : "Number"
+    },
+    "ELBHealthCheckUnhealthyThreshold" : {
+      "Description" : "The number of consecutive health probe failures required before moving the instance to the Unhealthy state.",
+      "Type" : "String",
+      "Default" : "2"
+    },
+    "ELBHealthCheckInterval" : {
+      "Description" : "The approximate interval, in seconds, between health checks of an individual instance.",
+      "Type" : "Number",
+      "Default" : "60"
+    },
+    "ELBHealthCheckTimeout" : {
+      "Description" : "The amount of time, in seconds, during which no response means a failed health probe. This value must be less than the value for Interval.",
+      "Default" : "30",
+      "Type" : "Number"
+    },
+    "ELBR53DNSName" : {
+      "Description" : "DNS name for the ELB to be added in Route53. The final end endpoint for the ELB will be <ELBDNSName>.<AWS-Region>.<Environment>.<ELBHostedZone> .",
+      "Type" : "String",
+      "Default" : "notification"
+    },
+    "ELBR53HostedZone" : {
+      "Type" : "String",
+      "Description" : "The DNS name of an existing Amazon Route 53 hosted zone. DNS record for the LoadBalancer will be added in this zone.",
+      "AllowedPattern" : "(?!-)[a-zA-Z0-9-.]{1,63}(?<!-)",
+      "ConstraintDescription" : "Must be a valid DNS zone name.",
+      "Default" : "test.com"
+    },
+    "Environment" : {
+      "Description" : "Instance Environment.",
+      "Default" : "uat2",
+      "Type" : "String"
+    },
+    "Role" : {
+      "Description" : "Instance Role.",
+      "Default" : "webcontainer-notification",
+      "Type" : "String"
+    }
+  },
+
+  "Mappings" : {
+  },
+
+  "Resources" : {
+    "ElasticLoadBalancer" : {
+      "Type" : "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties" : {
+        "ConnectionDrainingPolicy" : {
+          "Enabled" : "true",
+          "Timeout" : "60"
+        },
+        "LoadBalancerName" : { "Ref" : "ELBLoadBalancerName" },
+        "SecurityGroups" : [ { "Ref" : "ELBSecurityGroups" } ],
+        "Subnets" : { "Ref" : "ELBSubnets" },
+        "Scheme" : { "Ref" : "ELBScheme" },
+        "CrossZone" : "true",
+        "Listeners" : [ {
+          "InstancePort" : { "Ref" : "ELBListenersInstancePort" },
+          "LoadBalancerPort" : { "Ref" : "ELBListenersLoadBalancerPort" },
+          "Protocol" : { "Ref" : "ELBListenersProtocol" }
+        } ],
+        "HealthCheck" : {
+          "Target" : { "Ref" : "ELBHealthCheckTarget" },
+          "HealthyThreshold" : { "Ref" : "ELBHealthCheckHealthyThreshold" },
+          "UnhealthyThreshold" : { "Ref" : "ELBHealthCheckUnhealthyThreshold" },
+          "Interval" : { "Ref" : "ELBHealthCheckInterval" },
+          "Timeout" : { "Ref" : "ELBHealthCheckTimeout" }
+        },
+        "Tags" : [ { "Key" : "Name", "Value" : { "Ref" : "ELBLoadBalancerName" } },
+                   { "Key" : "Environment", "Value" : { "Ref" : "Environment" } },
+                   { "Key" : "Role", "Value" : { "Ref" : "Role" } }
+        ]
+      }
+    },
+    "Route53" : {
+      "Type" : "AWS::Route53::RecordSet",
+      "Properties" : {
+        "HostedZoneName" : { "Fn::Join" : [ "", [ { "Ref" : "ELBR53HostedZone" }, "." ] ] },
+        "Comment" : "CNAME redirect for ELB",
+        "Name" : { "Fn::Join" : [ "", [ { "Ref" : "ELBR53DNSName" }, ".", { "Ref" : "AWS::Region" }, ".", { "Ref" : "Environment" }, ".", {"Ref" : "ELBR53HostedZone"}, "."]]},
+        "Type" : "CNAME",
+        "TTL" : "300",
+        "ResourceRecords" : [ { "Fn::GetAtt" : [ "ElasticLoadBalancer", "CanonicalHostedZoneName" ] } ]
+      }
+    }
+  },
+
+  "Outputs" : {
+    "LoadBalancerURL" : {
+      "Description" : "LoadBalancer url.",
+      "Value" :  { "Fn::Join" : [ "", [ "http://", { "Ref" : "Route53" }]]}
+    },
+    "LoadBalancerName" : {
+      "Description" : "Name of the created LoadBalancer.",
+      "Value" : { "Ref" : "ELBLoadBalancerName" }
+    },
+    "LoadBalancerDNSName" : {
+      "Description" : "DNS name for the created loadbalancer.",
+      "Value" : { "Fn::GetAtt" : [ "ElasticLoadBalancer", "DNSName" ] }
+    }
+  }
+}
