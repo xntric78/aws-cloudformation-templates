@@ -7,6 +7,10 @@ Description: 'AWS CloudFormation Sample Template RDS_MySQL_With_Read_Replica: Sa
   instance and Amazon CloudWatch alarms. You will be billed for the AWS resources
   used if you create a stack from this template.'
 Parameters:
+  NamePrefix:
+    Description: 'For Naming. ex: <prefix>-<Resource Name>'
+    Type: String
+    Default: 'cpieper'
   DBName:
     Default: MyDatabase
     Description: The database name
@@ -34,7 +38,7 @@ Parameters:
     AllowedPattern: '[a-zA-Z0-9]+'
     ConstraintDescription: must contain only alphanumeric characters.
   DBAllocatedStorage:
-    Default: '5'
+    Default: '10'
     Description: The size of the database (Gb)
     Type: Number
     MinValue: '5'
@@ -43,7 +47,7 @@ Parameters:
   DBInstanceClass:
     Description: The database instance type
     Type: String
-    Default: db.t2.small
+    Default: db.t2.micro
     AllowedValues: [db.t1.micro, db.m1.small, db.m1.medium, db.m1.large, db.m1.xlarge,
       db.m2.xlarge, db.m2.2xlarge, db.m2.4xlarge, db.m3.medium, db.m3.large, db.m3.xlarge,
       db.m3.2xlarge, db.m4.large, db.m4.xlarge, db.m4.2xlarge, db.m4.4xlarge, db.m4.10xlarge,
@@ -58,12 +62,6 @@ Parameters:
     Type: String
     AllowedPattern: '[a-zA-Z0-9\-]+'
     ConstraintDescription: must be a valid security group name.
-  MultiAZ:
-    Description: Multi-AZ master database
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    ConstraintDescription: must be true or false.
 Conditions:
   Is-EC2-VPC: !Or [!Equals [!Ref 'AWS::Region', eu-central-1], !Equals [!Ref 'AWS::Region',
       cn-north-1]]
@@ -98,19 +96,11 @@ Resources:
       MultiAZ: !Ref 'MultiAZ'
       Tags:
       - Key: Name
-        Value: Master Database
+        Value: !Join ['', [!Ref 'NamePrefix', '-', !Ref 'DBName']]
       VPCSecurityGroups: !If [Is-EC2-VPC, [!GetAtt [DBEC2SecurityGroup, GroupId]],
         !Ref 'AWS::NoValue']
       DBSecurityGroups: !If [Is-EC2-Classic, [!Ref 'DBSecurityGroup'], !Ref 'AWS::NoValue']
     DeletionPolicy: Snapshot
-  ReplicaDB:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      SourceDBInstanceIdentifier: !Ref 'MasterDB'
-      DBInstanceClass: !Ref 'DBInstanceClass'
-      Tags:
-      - Key: Name
-        Value: Read Replica Database
 Outputs:
   EC2Platform:
     Description: Platform in which this stack is deployed
@@ -119,7 +109,3 @@ Outputs:
     Description: JDBC connection string for the master database
     Value: !Join ['', ['jdbc:mysql://', !GetAtt [MasterDB, Endpoint.Address], ':',
         !GetAtt [MasterDB, Endpoint.Port], /, !Ref 'DBName']]
-  ReplicaJDBCConnectionString:
-    Description: JDBC connection string for the replica database
-    Value: !Join ['', ['jdbc:mysql://', !GetAtt [ReplicaDB, Endpoint.Address], ':',
-        !GetAtt [ReplicaDB, Endpoint.Port], /, !Ref 'DBName']]
